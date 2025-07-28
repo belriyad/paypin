@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "env": {
+    "VITE_FIREBASE_API_KEY": "AIzaSyA3Uv8_Z66_dOUqIK5KCQs4fTkPbFzvn2A",
+    "VITE_FIREBASE_AUTH_DOMAIN": "payping-a060a.firebaseapp.com",
+    "VITE_FIREBASE_PROJECT_ID": "payping-a060a",
+    "VITE_FIREBASE_STORAGE_BUCKET": "payping-a060a.appspot.com",
+    "VITE_FIREBASE_MESSAGING_SENDER_ID": "17753421255",
+    "VITE_FIREBASE_APP_ID": "1:17753421255:web:531bd6101d14d626c455e2"
+  }
+}
