@@ -11,6 +11,15 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "YOUR_APP_ID",
 };
 
+// Validate Firebase configuration
+const isConfigValid = Object.values(firebaseConfig).every(value => 
+  value && !value.startsWith('YOUR_')
+);
+
+if (!isConfigValid) {
+  console.warn('Firebase configuration may be incomplete. Please check your environment variables.');
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
