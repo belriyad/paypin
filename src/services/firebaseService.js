@@ -34,7 +34,7 @@ const COLLECTIONS = {
 // Get user-specific collection path
 const getUserCollection = (collectionName) => {
   const userId = auth.currentUser?.uid;
-  if (!userId) throw new Error('User not authenticated');
+  if (!userId) throw new Error('You are not signed in. Please sign in to your account to access this feature.');
   return `users/${userId}/${collectionName}`;
 };
 
