@@ -40,6 +40,9 @@ export default function Navbar() {
                   <Link to="/templates" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">
                     Templates
                   </Link>
+                  <Link to="/help" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">
+                    Help
+                  </Link>
                   <Link to="/settings" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">
                     Settings
                   </Link>

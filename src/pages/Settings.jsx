@@ -1,44 +1,84 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAppData } from '../contexts/AppDataContext';
+import { useAuth } from '../contexts/AuthContext';
+import LoadingSpinner from '../components/LoadingSpinner';
+import DataExportService from '../services/dataExportService';
 
 export default function Settings() {
+  const { user, signOut } = useAuth();
+  const { 
+    customers, 
+    payments, 
+    templates, 
+    settings, 
+    updateSettings, 
+    loading 
+  } = useAppData();
+
   const [activeTab, setActiveTab] = useState('company');
-  const [settings, setSettings] = useState({
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [isExporting, setIsExporting] = useState(false);
+
+  const [formData, setFormData] = useState({
     company: {
-      name: 'PayPing Solutions',
-      email: 'admin@payping.com',
-      phone: '+1 (555) 123-4567',
-      address: '123 Business St, Suite 100',
-      city: 'San Francisco',
-      state: 'CA',
-      zipCode: '94102',
-      website: 'https://payping.com',
+      name: '',
+      email: '',
+      phone: '',
+      website: '',
+      address: '',
       logo: ''
     },
     notifications: {
       emailReminders: true,
       smsReminders: false,
-      daysBefore: 3,
-      escalationDays: 7,
-      sendReceipts: true,
-      weeklyReports: true
+      weeklyReports: true,
+      overdueAlerts: true,
+      paymentReceived: true
     },
     payment: {
-      currency: 'USD',
-      lateFeePercent: 5,
-      gracePeriodDays: 5,
+      defaultCurrency: 'USD',
+      taxRate: 0,
+      lateFee: 0,
+      gracePeriod: 7,
       autoReminders: true,
-      paymentMethods: ['credit_card', 'bank_transfer', 'paypal']
+      reminderFrequency: 7
     },
-    branding: {
-      primaryColor: '#3B82F6',
-      secondaryColor: '#10B981',
-      emailTemplate: 'modern',
-      invoiceTemplate: 'professional'
+    security: {
+      twoFactorAuth: false,
+      sessionTimeout: 60,
+      passwordExpiry: 90
     }
   });
 
+  useEffect(() => {
+    if (settings) {
+      setFormData(prevData => ({
+        ...prevData,
+        ...settings
+      }));
+    }
+  }, [settings]);
+
+  const showMessage = (type, text) => {
+    setMessage({ type, text });
+    setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+  };
+
+  const handleSave = async (section) => {
+    setIsSaving(true);
+    try {
+      await updateSettings(section, formData[section]);
+      showMessage('success', `${section.charAt(0).toUpperCase() + section.slice(1)} settings saved successfully!`);
+    } catch (error) {
+      showMessage('error', `Failed to save settings: ${error.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleInputChange = (section, field, value) => {
-    setSettings(prev => ({
+    setFormData(prev => ({
       ...prev,
       [section]: {
         ...prev[section],
@@ -46,83 +86,81 @@ export default function Settings() {
       }
     }));
   };
-  
-  // Handler functions for settings actions
-  const handleSaveChanges = () => {
-    // Validate required fields
-    if (!settings.company.name.trim()) {
-      alert('Please enter a company name.');
-      return;
+
+  const handleExport = async (type) => {
+    setIsExporting(true);
+    try {
+      let result;
+      
+      switch (type) {
+        case 'customers':
+          result = DataExportService.exportCustomers(customers);
+          break;
+        case 'payments':
+          result = DataExportService.exportPayments(payments, customers);
+          break;
+        case 'templates':
+          result = DataExportService.exportTemplates(templates);
+          break;
+        case 'financial':
+          result = DataExportService.generateFinancialReport(payments, customers);
+          break;
+        default:
+          throw new Error('Unknown export type');
+      }
+      
+      showMessage('success', `Successfully exported ${result.recordCount || 'data'} records to ${result.filename}`);
+    } catch (error) {
+      showMessage('error', `Export failed: ${error.message}`);
+    } finally {
+      setIsExporting(false);
     }
-    if (!settings.company.email.trim()) {
-      alert('Please enter a company email.');
-      return;
-    }
-    
-    alert('✅ Settings saved successfully!\n\nYour changes have been applied:\n• Company information updated\n• Notification preferences saved\n• Payment settings configured\n• Branding preferences applied');
   };
-  
-  const handleResetToDefaults = () => {
-    if (confirm('Are you sure you want to reset all settings to default values?\n\nThis action cannot be undone.')) {
-      // Reset to default values
-      setSettings({
-        company: {
-          name: 'PayPing Solutions',
-          email: 'admin@payping.com',
-          phone: '+1 (555) 123-4567',
-          address: '123 Business St, Suite 100',
-          city: 'San Francisco',
-          state: 'CA',
-          zipCode: '94102',
-          website: 'https://payping.com',
-          logo: ''
-        },
-        notifications: {
-          emailReminders: true,
-          smsReminders: false,
-          daysBefore: 3,
-          escalationDays: 7,
-          sendReceipts: true,
-          weeklyReports: true
-        },
-        payment: {
-          currency: 'USD',
-          lateFeePercent: 5,
-          gracePeriodDays: 5,
-          autoReminders: true,
-          paymentMethods: ['credit_card', 'bank_transfer', 'paypal']
-        },
-        branding: {
-          primaryColor: '#3B82F6',
-          secondaryColor: '#1F2937',
-          logoUrl: '',
-          companyName: 'PayPing Solutions',
-          tagline: 'Streamline Your Payment Process'
-        }
-      });
-      alert('✅ Settings have been reset to default values!');
+
+  const handleSignOut = async () => {
+    if (window.confirm('Are you sure you want to sign out?')) {
+      try {
+        await signOut();
+      } catch (error) {
+        showMessage('error', 'Failed to sign out. Please try again.');
+      }
     }
   };
 
   const tabs = [
-    { id: 'company', name: 'Company Info', icon: '🏢' },
-    { id: 'notifications', name: 'Notifications', icon: '🔔' },
-    { id: 'payment', name: 'Payment', icon: '💳' },
-    { id: 'branding', name: 'Branding', icon: '🎨' }
+    { id: 'company', label: 'Company Info', icon: '🏢' },
+    { id: 'notifications', label: 'Notifications', icon: '🔔' },
+    { id: 'payment', label: 'Payment Settings', icon: '💳' },
+    { id: 'data', label: 'Data Management', icon: '📊' },
+    { id: 'security', label: 'Security', icon: '🔒' },
+    { id: 'account', label: 'Account', icon: '👤' }
   ];
 
-  return (
-    <div className="max-w-6xl mx-auto">
-      <div className="bg-white rounded-lg shadow">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-gray-600 mt-1">Manage your account and payment preferences</p>
-        </div>
+  if (loading) {
+    return <LoadingSpinner />;
+  }
 
+  return (
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+        <p className="mt-2 text-gray-600">Manage your account and application preferences</p>
+      </div>
+
+      {message.text && (
+        <div className={`mb-6 p-4 rounded-md ${
+          message.type === 'success' 
+            ? 'bg-green-50 border border-green-200 text-green-700' 
+            : 'bg-red-50 border border-red-200 text-red-700'
+        }`}>
+          {message.text}
+        </div>
+      )}
+
+      <div className="bg-white shadow rounded-lg">
         {/* Tab Navigation */}
         <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6">
+          <nav className="-mb-px flex space-x-8 px-6">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
@@ -134,366 +172,244 @@ export default function Settings() {
                 }`}
               >
                 <span className="mr-2">{tab.icon}</span>
-                {tab.name}
+                {tab.label}
               </button>
             ))}
           </nav>
         </div>
 
-        {/* Tab Content */}
         <div className="p-6">
-          {/* Company Information */}
+          {/* Company Info Tab */}
           {activeTab === 'company' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Information</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Company Information</h3>
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Company Name
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Company Name</label>
                     <input
                       type="text"
-                      value={settings.company.name}
+                      value={formData.company.name}
                       onChange={(e) => handleInputChange('company', 'name', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Email
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Business Email</label>
                     <input
                       type="email"
-                      value={settings.company.email}
+                      value={formData.company.email}
                       onChange={(e) => handleInputChange('company', 'email', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Phone
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
                     <input
                       type="tel"
-                      value={settings.company.phone}
+                      value={formData.company.phone}
                       onChange={(e) => handleInputChange('company', 'phone', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Website
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Website</label>
                     <input
                       type="url"
-                      value={settings.company.website}
+                      value={formData.company.website}
                       onChange={(e) => handleInputChange('company', 'website', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+                  
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Business Address</label>
+                    <textarea
+                      value={formData.company.address}
+                      onChange={(e) => handleInputChange('company', 'address', e.target.value)}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
                 </div>
                 
                 <div className="mt-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Address
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.company.address}
-                    onChange={(e) => handleInputChange('company', 'address', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Street address"
-                  />
+                  <button
+                    onClick={() => handleSave('company')}
+                    disabled={isSaving}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {isSaving ? <LoadingSpinner size="small" /> : 'Save Company Info'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Data Management Tab */}
+          {activeTab === 'data' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Export Data</h3>
+                <p className="text-gray-600 mb-6">Download your data in CSV format for backup or analysis.</p>
+                
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium text-gray-900">Customer Data</h4>
+                        <p className="text-sm text-gray-600">{customers.length} customers</p>
+                      </div>
+                      <button
+                        onClick={() => handleExport('customers')}
+                        disabled={isExporting || customers.length === 0}
+                        className="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
+                      >
+                        Export CSV
+                      </button>
+                    </div>
+                  </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                    <input
-                      type="text"
-                      value={settings.company.city}
-                      onChange={(e) => handleInputChange('company', 'city', e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="City"
-                    />
-                    <input
-                      type="text"
-                      value={settings.company.state}
-                      onChange={(e) => handleInputChange('company', 'state', e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="State"
-                    />
-                    <input
-                      type="text"
-                      value={settings.company.zipCode}
-                      onChange={(e) => handleInputChange('company', 'zipCode', e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="ZIP Code"
-                    />
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium text-gray-900">Payment Data</h4>
+                        <p className="text-sm text-gray-600">{payments.length} payments</p>
+                      </div>
+                      <button
+                        onClick={() => handleExport('payments')}
+                        disabled={isExporting || payments.length === 0}
+                        className="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
+                      >
+                        Export CSV
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium text-gray-900">Email Templates</h4>
+                        <p className="text-sm text-gray-600">{templates.length} templates</p>
+                      </div>
+                      <button
+                        onClick={() => handleExport('templates')}
+                        disabled={isExporting || templates.length === 0}
+                        className="bg-blue-600 text-white px-3 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
+                      >
+                        Export CSV
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium text-gray-900">Financial Report</h4>
+                        <p className="text-sm text-gray-600">Complete analysis</p>
+                      </div>
+                      <button
+                        onClick={() => handleExport('financial')}
+                        disabled={isExporting || payments.length === 0}
+                        className="bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 disabled:opacity-50 text-sm"
+                      >
+                        Generate Report
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Data Statistics</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{customers.length}</div>
+                    <div className="text-sm text-gray-600">Total Customers</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{payments.length}</div>
+                    <div className="text-sm text-gray-600">Total Payments</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-purple-600">{templates.length}</div>
+                    <div className="text-sm text-gray-600">Email Templates</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">
+                      ${payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + (p.amount || 0), 0).toLocaleString()}
+                    </div>
+                    <div className="text-sm text-gray-600">Total Revenue</div>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Notifications */}
-          {activeTab === 'notifications' && (
+          {/* Account Tab */}
+          {activeTab === 'account' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Notification Preferences</h3>
-                
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Account Information</h3>
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center space-x-4">
+                    {user?.photoURL && (
+                      <img
+                        src={user.photoURL}
+                        alt="Profile"
+                        className="w-16 h-16 rounded-full"
+                      />
+                    )}
+                    <div>
+                      <h4 className="font-medium text-gray-900">{user?.displayName || 'User'}</h4>
+                      <p className="text-gray-600">{user?.email}</p>
+                      <p className="text-sm text-gray-500">
+                        Member since: {user?.metadata?.creationTime ? 
+                          new Date(user.metadata.creationTime).toLocaleDateString() : 'Unknown'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Account Actions</h3>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-gray-900">Email Reminders</h4>
-                      <p className="text-sm text-gray-600">Send payment reminders via email</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.notifications.emailReminders}
-                        onChange={(e) => handleInputChange('notifications', 'emailReminders', e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-gray-900">SMS Reminders</h4>
-                      <p className="text-sm text-gray-600">Send payment reminders via SMS</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={settings.notifications.smsReminders}
-                        onChange={(e) => handleInputChange('notifications', 'smsReminders', e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Days Before Due Date to Send Reminder
-                      </label>
-                      <select
-                        value={settings.notifications.daysBefore}
-                        onChange={(e) => handleInputChange('notifications', 'daysBefore', Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value={1}>1 day</option>
-                        <option value={3}>3 days</option>
-                        <option value={7}>7 days</option>
-                        <option value={14}>14 days</option>
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Escalation (Days Past Due)
-                      </label>
-                      <select
-                        value={settings.notifications.escalationDays}
-                        onChange={(e) => handleInputChange('notifications', 'escalationDays', Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value={3}>3 days</option>
-                        <option value={7}>7 days</option>
-                        <option value={14}>14 days</option>
-                        <option value={30}>30 days</option>
-                      </select>
-                    </div>
-                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700"
+                  >
+                    Sign Out
+                  </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Payment Settings */}
+          {/* Other tabs placeholders */}
+          {activeTab === 'notifications' && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Notification Preferences</h3>
+              <p className="text-gray-600">Notification settings will be available in a future update.</p>
+            </div>
+          )}
+
           {activeTab === 'payment' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Configuration</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Default Currency
-                    </label>
-                    <select
-                      value={settings.payment.currency}
-                      onChange={(e) => handleInputChange('payment', 'currency', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="USD">USD - US Dollar</option>
-                      <option value="EUR">EUR - Euro</option>
-                      <option value="GBP">GBP - British Pound</option>
-                      <option value="CAD">CAD - Canadian Dollar</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Late Fee Percentage
-                    </label>
-                    <input
-                      type="number"
-                      value={settings.payment.lateFeePercent}
-                      onChange={(e) => handleInputChange('payment', 'lateFeePercent', Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      max="50"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Grace Period (Days)
-                    </label>
-                    <input
-                      type="number"
-                      value={settings.payment.gracePeriodDays}
-                      onChange={(e) => handleInputChange('payment', 'gracePeriodDays', Number(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      max="30"
-                    />
-                  </div>
-                </div>
-                
-                <div className="mt-6">
-                  <h4 className="font-medium text-gray-900 mb-3">Accepted Payment Methods</h4>
-                  <div className="space-y-2">
-                    {[
-                      { id: 'credit_card', name: 'Credit/Debit Cards' },
-                      { id: 'bank_transfer', name: 'Bank Transfer' },
-                      { id: 'paypal', name: 'PayPal' },
-                      { id: 'stripe', name: 'Stripe' }
-                    ].map((method) => (
-                      <label key={method.id} className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={settings.payment.paymentMethods.includes(method.id)}
-                          onChange={(e) => {
-                            const newMethods = e.target.checked
-                              ? [...settings.payment.paymentMethods, method.id]
-                              : settings.payment.paymentMethods.filter(m => m !== method.id);
-                            handleInputChange('payment', 'paymentMethods', newMethods);
-                          }}
-                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">{method.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Settings</h3>
+              <p className="text-gray-600">Payment configuration options will be available in a future update.</p>
             </div>
           )}
 
-          {/* Branding */}
-          {activeTab === 'branding' && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Brand Customization</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Primary Color
-                    </label>
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="color"
-                        value={settings.branding.primaryColor}
-                        onChange={(e) => handleInputChange('branding', 'primaryColor', e.target.value)}
-                        className="h-10 w-16 border border-gray-300 rounded cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={settings.branding.primaryColor}
-                        onChange={(e) => handleInputChange('branding', 'primaryColor', e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Secondary Color
-                    </label>
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="color"
-                        value={settings.branding.secondaryColor}
-                        onChange={(e) => handleInputChange('branding', 'secondaryColor', e.target.value)}
-                        className="h-10 w-16 border border-gray-300 rounded cursor-pointer"
-                      />
-                      <input
-                        type="text"
-                        value={settings.branding.secondaryColor}
-                        onChange={(e) => handleInputChange('branding', 'secondaryColor', e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Email Template Style
-                    </label>
-                    <select
-                      value={settings.branding.emailTemplate}
-                      onChange={(e) => handleInputChange('branding', 'emailTemplate', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="modern">Modern</option>
-                      <option value="classic">Classic</option>
-                      <option value="minimal">Minimal</option>
-                    </select>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Invoice Template
-                    </label>
-                    <select
-                      value={settings.branding.invoiceTemplate}
-                      onChange={(e) => handleInputChange('branding', 'invoiceTemplate', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="professional">Professional</option>
-                      <option value="creative">Creative</option>
-                      <option value="simple">Simple</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
+          {activeTab === 'security' && (
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Security Settings</h3>
+              <p className="text-gray-600">Advanced security options will be available in a future update.</p>
             </div>
           )}
-
-          {/* Save Button */}
-          <div className="flex justify-end pt-6 border-t border-gray-200 mt-8">
-            <div className="flex space-x-3">
-              <button 
-                onClick={handleResetToDefaults}
-                className="px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
-              >
-                Reset to Defaults
-              </button>
-              <button 
-                onClick={handleSaveChanges}
-                className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                Save Changes
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>

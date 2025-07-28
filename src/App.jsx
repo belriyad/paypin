@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import { PageLoader, ErrorDisplay } from './components/LoadingSpinner';
@@ -14,6 +14,8 @@ import Demo from './pages/Demo';
 import Customers from './pages/Customers';
 import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
+import OnboardingWizard from './pages/OnboardingWizard';
+import HelpCenter from './pages/HelpCenter';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AppDataProvider, useAppData } from './contexts/AppDataContext';
 import './App.css';
@@ -21,6 +23,9 @@ import './App.css';
 function AppContent() {
   const { user, loading: authLoading } = useAuth();
   const { loading: dataLoading, error, isInitialized, clearError } = useAppData();
+
+  // Check if user needs onboarding
+  const needsOnboarding = user && isInitialized && !localStorage.getItem('payping_onboarding_complete');
 
   // Show loading while authenticating
   if (authLoading) {
@@ -46,7 +51,7 @@ function AppContent() {
 
   return (
     <Router>
-      <Navbar />
+      {!needsOnboarding && <Navbar />}
       <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -55,35 +60,47 @@ function AppContent() {
           <Route path="/terms" element={<Terms />} />
           <Route path="/privacy" element={<Privacy />} />
           
-          {/* Protected Routes */}
+          {/* Onboarding Route */}
+          <Route path="/onboarding" element={
+            <ProtectedRoute>
+              <OnboardingWizard />
+            </ProtectedRoute>
+          } />
+          
+          {/* Protected Routes with Onboarding Check */}
           <Route path="/dashboard" element={
             <ProtectedRoute>
-              <Dashboard />
+              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <Dashboard />}
             </ProtectedRoute>
           } />
           <Route path="/upload-customers" element={
             <ProtectedRoute>
-              <UploadCustomers />
+              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <UploadCustomers />}
             </ProtectedRoute>
           } />
           <Route path="/templates" element={
             <ProtectedRoute>
-              <Templates />
+              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <Templates />}
             </ProtectedRoute>
           } />
           <Route path="/payments" element={
             <ProtectedRoute>
-              <Payments />
+              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <Payments />}
             </ProtectedRoute>
           } />
           <Route path="/settings" element={
             <ProtectedRoute>
-              <Settings />
+              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <Settings />}
             </ProtectedRoute>
           } />
           <Route path="/customers" element={
             <ProtectedRoute>
-              <Customers />
+              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <Customers />}
+            </ProtectedRoute>
+          } />
+          <Route path="/help" element={
+            <ProtectedRoute>
+              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <HelpCenter />}
             </ProtectedRoute>
           } />
         </Routes>

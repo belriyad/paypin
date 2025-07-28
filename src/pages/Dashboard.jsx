@@ -1,28 +1,88 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import PaymentStatusCard from '../components/PaymentStatusCard';
 import CustomerTable from '../components/CustomerTable';
 import { useAppData } from '../contexts/AppDataContext';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { customers, payments, loading, isInitialized } = useAppData();
+  const { customers, payments, loading, isInitialized, settings } = useAppData();
+  const [dateRange, setDateRange] = useState('30'); // 30 days default
+  const [recentActivity, setRecentActivity] = useState([]);
   
-  // Calculate real-time stats from Firebase data
+  // Calculate real-time stats from Firebase data with date filtering
   const stats = useMemo(() => {
     const totalCustomers = customers.length;
+    
+    // Filter payments by date range
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - parseInt(dateRange));
+    
+    const filteredPayments = payments.filter(payment => {
+      const paymentDate = payment.createdAt?.toDate ? payment.createdAt.toDate() : new Date(payment.createdAt);
+      return paymentDate >= cutoffDate;
+    });
+    
     const pendingPayments = payments.filter(p => p.status === 'pending').length;
     const overduePayments = payments.filter(p => p.status === 'overdue').length;
-    const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
+    const paidPayments = payments.filter(p => p.status === 'paid').length;
+    
+    const totalRevenue = payments.filter(p => p.status === 'paid').reduce((sum, p) => sum + (p.amount || 0), 0);
+    const pendingAmount = payments.filter(p => p.status === 'pending').reduce((sum, p) => sum + (p.amount || 0), 0);
+    const overdueAmount = payments.filter(p => p.status === 'overdue').reduce((sum, p) => sum + (p.amount || 0), 0);
     
     return {
       totalCustomers,
+      totalPayments: filteredPayments.length,
       pendingPayments,
       overduePayments,
+      paidPayments,
       totalRevenue,
+      pendingAmount,
+      overdueAmount,
+      filteredPayments,
     };
-  }, [customers, payments]);
+  }, [customers, payments, dateRange]);
+
+  // Generate recent activity feed
+  useEffect(() => {
+    if (payments.length > 0 && customers.length > 0) {
+      const activity = [];
+      
+      // Recent payments sorted by update date
+      const recentPayments = payments
+        .sort((a, b) => {
+          const dateA = a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(a.updatedAt || 0);
+          const dateB = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(b.updatedAt || 0);
+          return dateB - dateA;
+        })
+        .slice(0, 10);
+
+      recentPayments.forEach(payment => {
+        const customer = customers.find(c => c.id === payment.customerId);
+        activity.push({
+          id: payment.id,
+          type: 'payment',
+          action: getActivityAction(payment.status),
+          customer: customer?.name || 'Unknown Customer',
+          amount: payment.amount || 0,
+          status: payment.status,
+          date: payment.updatedAt?.toDate ? payment.updatedAt.toDate() : new Date(payment.updatedAt || 0)
+        });
+      });
+
+      setRecentActivity(activity);
+    }
+  }, [payments, customers]);
+
+  const getActivityAction = (status) => {
+    switch (status) {
+      case 'paid': return 'Payment received';
+      case 'pending': return 'Payment pending';
+      case 'overdue': return 'Payment overdue';
+      default: return 'Payment updated';
+    }
+  };
 
   const [isLoading, setIsLoading] = useState({
     addCustomer: false,
@@ -34,7 +94,6 @@ export default function Dashboard() {
   const handleAddCustomer = async () => {
     setIsLoading(prev => ({ ...prev, addCustomer: true }));
     
-    // Simulate a brief loading state for better UX
     setTimeout(() => {
       navigate('/upload-customers', { 
         state: { 
@@ -49,198 +108,302 @@ export default function Dashboard() {
     const customerCount = stats.overduePayments + stats.pendingPayments;
     
     if (customerCount === 0) {
-      alert('No pending or overdue payments to send reminders for!');
+      alert('No customers with pending or overdue payments to remind.');
       return;
     }
+
+    setIsLoading(prev => ({ ...prev, sendReminder: true }));
     
-    const confirmMessage = `Send payment reminders to ${customerCount} customers with pending/overdue payments?\n\nThis will:\n- Send email reminders to overdue customers\n- Update reminder status in your dashboard\n- Track reminder history`;
-    
-    if (confirm(confirmMessage)) {
-      setIsLoading(prev => ({ ...prev, sendReminder: true }));
-      
-      // Simulate sending reminders with a delay
-      setTimeout(() => {
-        alert(`✅ Reminders sent successfully to ${customerCount} customers!\n\nYou can track reminder responses in the Payments section.`);
-        setIsLoading(prev => ({ ...prev, sendReminder: false }));
-      }, 2000);
-    }
+    setTimeout(() => {
+      navigate('/templates', { 
+        state: { 
+          message: `Ready to send reminders to ${customerCount} customers with pending or overdue payments.` 
+        } 
+      });
+      setIsLoading(prev => ({ ...prev, sendReminder: false }));
+    }, 300);
   };
 
   const handleViewReports = async () => {
     setIsLoading(prev => ({ ...prev, viewReports: true }));
     
     setTimeout(() => {
-      navigate('/payments');
+      alert('Advanced reporting feature coming soon! For now, you can view detailed payment information in the Payments section.');
       setIsLoading(prev => ({ ...prev, viewReports: false }));
-    }, 300);
+    }, 500);
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {!isInitialized && <LoadingSpinner />}
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount || 0);
+  };
+
+  const formatDate = (date) => {
+    if (!date) return 'Unknown';
+    const dateObj = date.toDate ? date.toDate() : new Date(date);
+    return dateObj.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getUpcomingPayments = () => {
+    const today = new Date();
+    const nextWeek = new Date();
+    nextWeek.setDate(today.getDate() + 7);
+    
+    return payments.filter(payment => {
+      if (payment.status === 'paid') return false;
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600 mt-2">Welcome back! Here's what's happening with your payments.</p>
+      const dueDate = payment.dueDate?.toDate ? payment.dueDate.toDate() : new Date(payment.dueDate || 0);
+      return dueDate >= today && dueDate <= nextWeek;
+    });
+  };
+
+  if (loading || !isInitialized) {
+    return (
+      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-center min-h-96">
+          <LoadingSpinner />
         </div>
+      </div>
+    );
+  }
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Customers</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalCustomers}</p>
+  const upcomingPayments = getUpcomingPayments();
+  const companyName = settings?.company?.name || 'Your Company';
+
+  return (
+    <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      {/* Header with date range filter */}
+      <div className="mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Welcome back to {companyName}!</h1>
+            <p className="mt-2 text-gray-600">Here's what's happening with your payments today.</p>
+          </div>
+          
+          <div className="mt-4 sm:mt-0">
+            <select
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value)}
+              className="block w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            >
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="365">Last year</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="bg-blue-100 text-blue-600 p-3 rounded-full">
+                👥
               </div>
             </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Pending Payments</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.pendingPayments}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-red-100 rounded-lg">
-                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Overdue Payments</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.overduePayments}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-                </svg>
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">${stats.totalRevenue.toLocaleString()}</p>
-              </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Total Customers</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.totalCustomers}</p>
             </div>
           </div>
         </div>
 
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="bg-green-100 text-green-600 p-3 rounded-full">
+                💰
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Total Revenue</p>
+              <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalRevenue)}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="bg-yellow-100 text-yellow-600 p-3 rounded-full">
+                ⏳
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Pending Payments</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.pendingPayments}</p>
+              <p className="text-sm text-gray-500">{formatCurrency(stats.pendingAmount)}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="bg-red-100 text-red-600 p-3 rounded-full">
+                ⚠️
+              </div>
+            </div>
+            <div className="ml-4">
+              <p className="text-sm font-medium text-gray-600">Overdue Payments</p>
+              <p className="text-2xl font-bold text-gray-900">{stats.overduePayments}</p>
+              <p className="text-sm text-gray-500">{formatCurrency(stats.overdueAmount)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="bg-white p-6 rounded-lg shadow mb-8">
+        <h3 className="text-lg font-medium text-gray-900 mb-6">Quick Actions</h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <button
+            onClick={handleAddCustomer}
+            disabled={isLoading.addCustomer}
+            className="flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {isLoading.addCustomer ? (
+              <LoadingSpinner size="small" />
+            ) : (
+              <>
+                <span className="mr-2">👤</span>
+                Add New Customer
+              </>
+            )}
+          </button>
+          
+          <button
+            onClick={handleSendReminder}
+            disabled={isLoading.sendReminder}
+            className="flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-yellow-600 hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-yellow-500 disabled:opacity-50"
+          >
+            {isLoading.sendReminder ? (
+              <LoadingSpinner size="small" />
+            ) : (
+              <>
+                <span className="mr-2">📧</span>
+                Send Reminders
+              </>
+            )}
+          </button>
+          
+          <button
+            onClick={handleViewReports}
+            disabled={isLoading.viewReports}
+            className="flex items-center justify-center px-4 py-3 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50"
+          >
+            {isLoading.viewReports ? (
+              <LoadingSpinner size="small" />
+            ) : (
+              <>
+                <span className="mr-2">📊</span>
+                View Reports
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Two-column layout for activity and upcoming payments */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Recent Activity */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="bg-white rounded-lg shadow">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Recent Payment Activity</h3>
-            </div>
-            <div className="p-6">
-              <PaymentStatusCard />
-            </div>
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-medium text-gray-900 mb-6">Recent Activity</h3>
+          <div className="space-y-4">
+            {recentActivity.length > 0 ? (
+              recentActivity.slice(0, 8).map((activity) => (
+                <div key={activity.id} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{activity.action}</p>
+                    <p className="text-sm text-gray-600">{activity.customer}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-gray-900">{formatCurrency(activity.amount)}</p>
+                    <p className="text-xs text-gray-500">{formatDate(activity.date)}</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-gray-500 text-center py-8">No recent activity</p>
+            )}
           </div>
-
-          <div className="bg-white rounded-lg shadow">
-            <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">Customer Overview</h3>
+          {recentActivity.length > 8 && (
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => navigate('/payments')}
+                className="text-blue-600 hover:text-blue-500 text-sm font-medium"
+              >
+                View all activity →
+              </button>
             </div>
-            <div className="p-6">
-              <CustomerTable />
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Quick Actions */}
-        <div className="mt-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button 
-                onClick={handleAddCustomer}
-                disabled={isLoading.addCustomer}
-                className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="text-center">
-                  {isLoading.addCustomer ? (
-                    <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+        {/* Upcoming Payments */}
+        <div className="bg-white p-6 rounded-lg shadow">
+          <h3 className="text-lg font-medium text-gray-900 mb-6">Upcoming Payments (Next 7 Days)</h3>
+          <div className="space-y-4">
+            {upcomingPayments.length > 0 ? (
+              upcomingPayments.slice(0, 6).map((payment) => {
+                const customer = customers.find(c => c.id === payment.customerId);
+                const dueDate = payment.dueDate?.toDate ? payment.dueDate.toDate() : new Date(payment.dueDate || 0);
+                
+                return (
+                  <div key={payment.id} className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-900">{customer?.name || 'Unknown Customer'}</p>
+                      <p className="text-sm text-gray-600">Due: {dueDate.toLocaleDateString()}</p>
                     </div>
-                  ) : (
-                    <svg className="w-8 h-8 text-blue-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                  )}
-                  <p className="font-medium text-gray-900">Add Customer</p>
-                  <p className="text-sm text-gray-600">
-                    {isLoading.addCustomer ? 'Loading...' : 'Add new customer to database'}
-                  </p>
-                </div>
-              </button>
-
-              <button 
-                onClick={handleSendReminder}
-                disabled={isLoading.sendReminder || (stats.overduePayments + stats.pendingPayments === 0)}
-                className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-green-300 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <div className="text-center">
-                  {isLoading.sendReminder ? (
-                    <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                    <div className="text-right">
+                      <p className="text-sm font-medium text-gray-900">{formatCurrency(payment.amount)}</p>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                        payment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {payment.status}
+                      </span>
                     </div>
-                  ) : (
-                    <svg className="w-8 h-8 text-green-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                    </svg>
-                  )}
-                  <p className="font-medium text-gray-900">Send Reminder</p>
-                  <p className="text-sm text-gray-600">
-                    {isLoading.sendReminder ? 'Sending...' : 
-                     (stats.overduePayments + stats.pendingPayments === 0) ? 'No reminders needed' : 
-                     `Send to ${stats.overduePayments + stats.pendingPayments} customers`}
-                  </p>
-                </div>
-              </button>
-
-              <button 
-                onClick={handleViewReports}
-                disabled={isLoading.viewReports}
-                className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-purple-300 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-gray-500 text-center py-8">No upcoming payments</p>
+            )}
+          </div>
+          {upcomingPayments.length > 6 && (
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => navigate('/payments')}
+                className="text-blue-600 hover:text-blue-500 text-sm font-medium"
               >
-                <div className="text-center">
-                  {isLoading.viewReports ? (
-                    <div className="w-8 h-8 mx-auto mb-2 flex items-center justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600"></div>
-                    </div>
-                  ) : (
-                    <svg className="w-8 h-8 text-purple-600 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 00-2-2z" />
-                    </svg>
-                  )}
-                  <p className="font-medium text-gray-900">View Reports</p>
-                  <p className="text-sm text-gray-600">
-                    {isLoading.viewReports ? 'Loading...' : 'Generate payment reports'}
-                  </p>
-                </div>
+                View all payments →
               </button>
             </div>
-          </div>
+          )}
         </div>
+      </div>
+
+      {/* Recent Customers Table */}
+      <div className="bg-white p-6 rounded-lg shadow">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-medium text-gray-900">Recent Customers</h3>
+          <button
+            onClick={() => navigate('/customers')}
+            className="text-blue-600 hover:text-blue-500 text-sm font-medium"
+          >
+            View all customers →
+          </button>
+        </div>
+        <CustomerTable customers={customers.slice(0, 5)} compact={true} />
       </div>
     </div>
   );
