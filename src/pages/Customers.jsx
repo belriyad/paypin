@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppData } from '../contexts/AppDataContext';
 import ReminderToggle from '../components/ReminderToggle';
+import emailService from '../services/emailService';
 
 export default function Customers() {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, toggleCustomerReminders } = useAppData();
+  const { customers, payments, templates, settings, addCustomer, updateCustomer, deleteCustomer, toggleCustomerReminders } = useAppData();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -159,13 +160,79 @@ export default function Customers() {
     alert(`👤 Customer Details: ${customer.name}\n\nCompany: ${customer.company}\nEmail: ${customer.email}\nPhone: ${customer.phone}\nTotal Owed: $${customer.totalOwed.toLocaleString()}\nStatus: ${customer.status}\nLast Payment: ${customer.lastPayment}`);
   };
   
-  const handleSendReminderToCustomer = (customer) => {
-    if (customer.status === 'paid') {
+  const handleSendReminderToCustomer = async (customer) => {
+    // Find outstanding payments for this customer
+    const customerPayments = payments.filter(
+      payment => payment.customerId === customer.id && 
+      (payment.status === 'pending' || payment.status === 'overdue')
+    );
+
+    if (customerPayments.length === 0) {
       alert(`Customer ${customer.name} has no outstanding payments.`);
       return;
     }
-    if (confirm(`Send payment reminder to ${customer.name}?\n\nThis will send an email reminder for outstanding amount: $${customer.totalOwed.toLocaleString()}`)) {
-      alert(`✅ Reminder sent successfully to ${customer.name}!`);
+
+    const totalOutstanding = customerPayments.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    
+    if (!confirm(`Send payment reminder to ${customer.name}?\n\nThis will send a real email reminder for ${customerPayments.length} outstanding payment(s).\nTotal amount: $${totalOutstanding.toLocaleString()}`)) {
+      return;
+    }
+
+    try {
+      // Get reminder template
+      let reminderTemplate = templates.find(t => t.type === 'email' && t.name.toLowerCase().includes('reminder'));
+      
+      if (!reminderTemplate) {
+        reminderTemplate = {
+          name: 'Default Payment Reminder',
+          type: 'email',
+          subject: 'Payment Reminder - Outstanding Balance',
+          content: `Dear {customer_name},
+
+This is a friendly reminder that you have outstanding payments.
+
+Payment Details:
+- Total Amount Due: {amount}
+- Due Date: {due_date}
+
+Please submit your payment at your earliest convenience. If you have any questions or concerns, please don't hesitate to contact us.
+
+Thank you for your business!
+
+Best regards,
+{company_name}
+{company_email}`
+        };
+      }
+
+      // Send reminder for the most overdue payment
+      const mostOverduePayment = customerPayments
+        .sort((a, b) => {
+          const dateA = a.dueDate?.toDate ? a.dueDate.toDate() : new Date(a.dueDate || 0);
+          const dateB = b.dueDate?.toDate ? b.dueDate.toDate() : new Date(b.dueDate || 0);
+          return dateA - dateB;
+        })[0];
+
+      const result = await emailService.sendPaymentReminder(
+        customer,
+        mostOverduePayment,
+        reminderTemplate,
+        settings?.company
+      );
+
+      if (result.success) {
+        if (result.simulated) {
+          alert(`🔧 Reminder simulated for ${customer.name}!\n\nEmailJS not configured - check console for setup instructions.\n\nTo send real emails, configure EmailJS in your .env file.`);
+        } else {
+          alert(`✅ Reminder sent successfully to ${customer.name}!\n\nEmail sent to: ${result.recipient}\nSubject: ${result.subject}`);
+        }
+      } else {
+        alert(`❌ Failed to send reminder to ${customer.name}.\n\nError: ${result.error}\n\nPlease check your email configuration.`);
+      }
+
+    } catch (error) {
+      console.error('Error sending reminder:', error);
+      alert(`❌ Error sending reminder: ${error.message}`);
     }
   };
 

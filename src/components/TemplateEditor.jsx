@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useAppData } from '../contexts/AppDataContext';
+import emailService from '../services/emailService';
 
 export default function TemplateEditor({ template, onClose }) {
-  const { addTemplate, updateTemplate } = useAppData();
+  const { addTemplate, updateTemplate, settings } = useAppData();
   const [formData, setFormData] = useState({
     name: template?.name || '',
     type: template?.type || 'email',
@@ -123,23 +124,43 @@ Best regards,
       // First save the template
       await handleSaveTemplate();
       
-      // Then simulate sending test
-      const testContent = formData.content
-        .replace(/{customer_name}/g, 'John Doe')
-        .replace(/{invoice_number}/g, 'INV-001')
-        .replace(/{amount}/g, '$1,250.00')
-        .replace(/{due_date}/g, '2025-07-30')
-        .replace(/{days_overdue}/g, '5')
-        .replace(/{company_name}/g, 'PayPing Solutions');
-
-      // In a real application, this would send an actual email
-      console.log('Test email content:', {
-        to: 'test@example.com',
+      // Create test data
+      const testCustomer = {
+        name: 'John Doe',
+        email: 'test@example.com'
+      };
+      
+      const testPayment = {
+        id: 'INV-001',
+        invoice: 'INV-001',
+        amount: 1250.00,
+        dueDate: new Date('2025-07-30'),
+        status: 'overdue'
+      };
+      
+      const testTemplate = {
         subject: formData.subject || 'Test Email',
-        content: testContent
-      });
+        content: formData.content
+      };
 
-      alert('✅ Template saved and test email sent!\n\nCheck your email to see how the template appears to customers.');
+      // Send actual test email
+      const result = await emailService.sendPaymentReminder(
+        testCustomer,
+        testPayment,
+        testTemplate,
+        settings?.company
+      );
+
+      if (result.success) {
+        if (result.simulated) {
+          alert('✅ Template saved and email simulated!\n\nEmailJS not configured - check console for setup instructions.\n\nTo send real emails, configure EmailJS in your .env file.');
+        } else {
+          alert(`✅ Template saved and test email sent!\n\nTest email sent to: ${result.recipient}\nSubject: ${result.subject}\n\nCheck your email to see how the template appears to customers.`);
+        }
+      } else {
+        alert(`❌ Template saved but email failed to send.\n\nError: ${result.error}\n\nPlease check your EmailJS configuration.`);
+      }
+
     } catch (error) {
       console.error('Error in save and test:', error);
       setErrors({ submit: 'Failed to save and test template. Please try again.' });

@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import CustomerTable from '../components/CustomerTable';
 import { useAppData } from '../contexts/AppDataContext';
 import LoadingSpinner from '../components/LoadingSpinner';
+import emailService from '../services/emailService';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { customers, payments, loading, isInitialized, settings } = useAppData();
+  const { customers, payments, templates, loading, isInitialized, settings } = useAppData();
   const [dateRange, setDateRange] = useState('30'); // 30 days default
   const [recentActivity, setRecentActivity] = useState([]);
   
@@ -105,23 +106,85 @@ export default function Dashboard() {
   };
 
   const handleSendReminder = async () => {
-    const customerCount = stats.overduePayments + stats.pendingPayments;
+    const overdueCustomers = customers.filter(customer => {
+      return payments.some(payment => 
+        payment.customerId === customer.id && 
+        (payment.status === 'pending' || payment.status === 'overdue')
+      );
+    });
     
-    if (customerCount === 0) {
+    if (overdueCustomers.length === 0) {
       alert('No customers with pending or overdue payments to remind.');
+      return;
+    }
+
+    if (!window.confirm(`Send payment reminders to ${overdueCustomers.length} customers?\n\nThis will send real emails to customers with outstanding payments.`)) {
       return;
     }
 
     setIsLoading(prev => ({ ...prev, sendReminder: true }));
     
-    setTimeout(() => {
-      navigate('/templates', { 
-        state: { 
-          message: `Ready to send reminders to ${customerCount} customers with pending or overdue payments.` 
-        } 
-      });
+    try {
+      // Get default reminder template or create one
+      let reminderTemplate = templates.find(t => t.type === 'email' && t.name.toLowerCase().includes('reminder'));
+      
+      if (!reminderTemplate) {
+        reminderTemplate = {
+          name: 'Default Payment Reminder',
+          type: 'email',
+          subject: 'Payment Reminder - Invoice {invoice_number}',
+          content: `Dear {customer_name},
+
+This is a friendly reminder that your payment for Invoice {invoice_number} is due.
+
+Payment Details:
+- Amount Due: {amount}
+- Due Date: {due_date}
+- Days Overdue: {days_overdue}
+
+Please submit your payment at your earliest convenience. If you have any questions or concerns, please don't hesitate to contact us.
+
+Thank you for your business!
+
+Best regards,
+{company_name}
+{company_email}`
+        };
+      }
+
+      // Get outstanding payments for these customers
+      const outstandingPayments = payments.filter(payment => 
+        overdueCustomers.some(customer => customer.id === payment.customerId) &&
+        (payment.status === 'pending' || payment.status === 'overdue')
+      );
+
+      console.log(`📧 Sending ${outstandingPayments.length} payment reminders...`);
+
+      // Send bulk reminders
+      const results = await emailService.sendBulkReminders(
+        overdueCustomers,
+        outstandingPayments,
+        reminderTemplate,
+        settings?.company
+      );
+
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.filter(r => !r.success).length;
+
+      if (emailService.isConfigured()) {
+        alert(`✅ Reminder sending completed!\n\n✓ Successful: ${successCount}\n✗ Failed: ${failCount}\n\nCheck console for detailed results.`);
+      } else {
+        alert(`🔧 Email system not configured - reminders simulated!\n\n${successCount} reminders would be sent to customers.\n\nTo send real emails:\n1. Sign up at https://emailjs.com\n2. Configure email service\n3. Update .env file with your credentials\n\nCheck console for setup instructions.`);
+      }
+
+      console.log('📊 Email sending results:', results);
+
+    } catch (error) {
+      console.error('Error sending reminders:', error);
+      alert(`❌ Error sending reminders: ${error.message}`);
+    } finally {
       setIsLoading(prev => ({ ...prev, sendReminder: false }));
-    }, 300);
+    }
   };
 
   const handleViewReports = async () => {
