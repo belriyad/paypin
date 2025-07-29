@@ -1,0 +1,48 @@
+# Page snapshot
+
+```yaml
+- navigation:
+  - link "PayPing":
+    - /url: /
+  - link "Sign Up":
+    - /url: /signup
+  - link "Log In":
+    - /url: /login
+- img
+- heading "Create your account" [level=2]
+- paragraph: Join thousands of businesses using PayPing to manage payments
+- text: First Name
+- textbox "First Name"
+- text: Last Name
+- textbox "Last Name"
+- text: Email Address
+- textbox "Email Address"
+- text: Company Name
+- textbox "Company Name"
+- text: Password
+- textbox "Password"
+- button:
+  - img
+- text: Confirm Password
+- textbox "Confirm Password"
+- button:
+  - img
+- checkbox "I agree to the Terms and Conditions and Privacy Policy"
+- text: I agree to the
+- link "Terms and Conditions":
+  - /url: /terms
+- text: and
+- link "Privacy Policy":
+  - /url: /privacy
+- button "Create Account"
+- text: Or sign up with Google
+- button "Continue with Google":
+  - img
+  - text: Continue with Google
+- paragraph:
+  - text: Already have an account?
+  - link "Sign in here":
+    - /url: /login
+- paragraph: Trusted by 10,000+ businesses worldwide
+- text: ✓ Free 30-day trial ✓ No setup fees ✓ Cancel anytime
+```

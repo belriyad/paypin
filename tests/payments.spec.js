@@ -121,7 +121,7 @@ test.describe('Payment Management', () => {
     const expectedHeaders = ['Customer', 'Amount', 'Date', 'Status', 'Invoice', 'Actions'];
     
     for (const header of expectedHeaders) {
-      const headerElement = page.locator(`th:has-text("${header}"), td:has-text("${header}"), text=${header}`);
+      const headerElement = page.locator(`th:has-text("${header}"), td:has-text("${header}"), :text("${header}")`);
       if (await headerElement.count() > 0) {
         await expect(headerElement.first()).toBeVisible();
         break;
