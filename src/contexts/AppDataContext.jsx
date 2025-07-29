@@ -27,6 +27,17 @@ const initialState = {
       escalationDays: 7,
       sendReceipts: true,
       weeklyReports: true
+    },
+    subscription: {
+      plan: 'free',
+      status: 'active',
+      startDate: new Date().toISOString(),
+      features: {
+        maxCustomers: 10,
+        maxReminders: 25,
+        templates: 3,
+        users: 1
+      }
     }
   },
   loading: false,
@@ -63,7 +74,11 @@ export const ACTIONS = {
   DELETE_PAYMENT: 'DELETE_PAYMENT',
   
   // Settings actions
-  UPDATE_SETTINGS: 'UPDATE_SETTINGS'
+  UPDATE_SETTINGS: 'UPDATE_SETTINGS',
+  
+  // Subscription actions
+  LOAD_SUBSCRIPTION: 'LOAD_SUBSCRIPTION',
+  UPDATE_SUBSCRIPTION: 'UPDATE_SUBSCRIPTION'
 };
 
 // Reducer function
@@ -194,6 +209,27 @@ function appDataReducer(state, action) {
           [action.payload.section]: {
             ...state.settings[action.payload.section],
             ...action.payload.data
+          }
+        }
+      };
+      
+    case ACTIONS.LOAD_SUBSCRIPTION:
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          subscription: action.payload
+        }
+      };
+      
+    case ACTIONS.UPDATE_SUBSCRIPTION:
+      return {
+        ...state,
+        settings: {
+          ...state.settings,
+          subscription: {
+            ...state.settings.subscription,
+            ...action.payload
           }
         }
       };
@@ -385,6 +421,34 @@ export function AppDataProvider({ children }) {
     }
   };
 
+  // Subscription functions
+  const getSubscription = async () => {
+    try {
+      const subscription = await firebaseService.getUserSubscription();
+      dispatch({ type: ACTIONS.LOAD_SUBSCRIPTION, payload: subscription });
+      return subscription;
+    } catch (error) {
+      console.error('Error getting subscription:', error);
+      dispatch({ type: ACTIONS.SET_ERROR, payload: error.message });
+      throw error;
+    }
+  };
+
+  const updateSubscription = async (subscriptionData) => {
+    try {
+      const updatedSubscription = await firebaseService.updateSubscription(subscriptionData);
+      dispatch({ type: ACTIONS.UPDATE_SUBSCRIPTION, payload: subscriptionData });
+      return updatedSubscription;
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      dispatch({ type: ACTIONS.SET_ERROR, payload: error.message });
+      throw error;
+    }
+  };
+
+  // Create updateUserSettings as alias for updateSettings for backward compatibility
+  const updateUserSettings = updateSettings;
+
   const addPayment = async (paymentData) => {
     try {
       dispatch({ type: ACTIONS.SET_LOADING, payload: true });
@@ -479,6 +543,9 @@ export function AppDataProvider({ children }) {
     updatePayment,
     deletePayment,
     updateSettings,
+    updateUserSettings,
+    getSubscription,
+    updateSubscription,
     exportData,
     bulkImportCustomers,
     clearError

@@ -16,6 +16,7 @@ import Terms from './pages/Terms';
 import Privacy from './pages/Privacy';
 import OnboardingWizard from './pages/OnboardingWizard';
 import HelpCenter from './pages/HelpCenter';
+import Subscription from './pages/Subscription';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AppDataProvider, useAppData } from './contexts/AppDataContext';
 import './App.css';
@@ -101,6 +102,11 @@ function AppContent() {
           <Route path="/help" element={
             <ProtectedRoute>
               {needsOnboarding ? <Navigate to="/onboarding" replace /> : <HelpCenter />}
+            </ProtectedRoute>
+          } />
+          <Route path="/subscription" element={
+            <ProtectedRoute>
+              {needsOnboarding ? <Navigate to="/onboarding" replace /> : <Subscription />}
             </ProtectedRoute>
           } />
         </Routes>

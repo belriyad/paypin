@@ -388,6 +388,49 @@ class FirebaseService {
   }
 
   // ===============================
+  // SUBSCRIPTION OPERATIONS
+  // ===============================
+  
+  async getUserSubscription() {
+    try {
+      const settingsRef = doc(db, getUserCollection(COLLECTIONS.SETTINGS), 'userSettings');
+      const settingsDoc = await getDoc(settingsRef);
+      
+      if (settingsDoc.exists() && settingsDoc.data().subscription) {
+        return settingsDoc.data().subscription;
+      } else {
+        // Return default free plan
+        return {
+          plan: 'free',
+          status: 'active',
+          startDate: new Date().toISOString(),
+          features: {
+            maxCustomers: 10,
+            maxReminders: 25,
+            templates: 3,
+            users: 1
+          }
+        };
+      }
+    } catch (error) {
+      console.error('Error getting subscription:', error);
+      throw error;
+    }
+  }
+
+  async updateSubscription(subscriptionData) {
+    try {
+      return await this.updateSettings('subscription', {
+        ...subscriptionData,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error updating subscription:', error);
+      throw error;
+    }
+  }
+
+  // ===============================
   // REAL-TIME LISTENERS
   // ===============================
   

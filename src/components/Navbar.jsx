@@ -43,6 +43,9 @@ export default function Navbar() {
                   <Link to="/help" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">
                     Help
                   </Link>
+                  <Link to="/subscription" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">
+                    Subscription
+                  </Link>
                   <Link to="/settings" className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">
                     Settings
                   </Link>
