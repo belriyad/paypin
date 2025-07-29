@@ -8,25 +8,29 @@
     - /url: /signup
   - link "Log In":
     - /url: /login
-- heading "Streamline Your Payment Reminders" [level=1]
-- paragraph: PayPing helps you manage customer payments, send automated reminders, and track payment status all in one powerful platform.
-- link "Get Started Free":
-  - /url: /signup
-- link "View Demo":
-  - /url: /demo
-- heading "Everything you need to manage payments" [level=2]
-- paragraph: Powerful features to help you stay on top of your business finances
 - img
-- heading "Customer Management" [level=3]
-- paragraph: Upload and organize customer data with easy-to-use tools
+- heading "Welcome back" [level=2]
+- paragraph: Sign in to your PayPing account
+- text: Email Address
+- textbox "Email Address"
+- paragraph: Email is required
+- text: Password
+- textbox "Password"
+- button:
+  - img
+- paragraph: Password is required
+- checkbox "Remember me"
+- text: Remember me
+- button "Forgot password?"
+- button "Sign in"
+- text: Or continue with
+- button "Continue with Google":
+  - img
+  - text: Continue with Google
+- paragraph:
+  - text: Don't have an account?
+  - link "Create one now":
+    - /url: /signup
 - img
-- heading "Payment Tracking" [level=3]
-- paragraph: Monitor payment statuses and track outstanding invoices
-- img
-- heading "Smart Reminders" [level=3]
-- paragraph: Create custom templates and automate reminder workflows
-- heading "Ready to get started?" [level=2]
-- paragraph: Join thousands of businesses using PayPing to manage their payments
-- link "Start Free Trial":
-  - /url: /signup
+- text: Your data is secure and encrypted
 ```
