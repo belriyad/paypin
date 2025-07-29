@@ -12,10 +12,13 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "config": "node scripts/configure-phase1.js",
+    "test:config": "node scripts/configure-phase1.js"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
+    "@stripe/stripe-js": "^7.7.0",
     "firebase": "^12.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

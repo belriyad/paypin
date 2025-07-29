@@ -1,22 +1,55 @@
 import emailjs from '@emailjs/browser';
+import auditService, { AUDIT_EVENTS } from './auditService.js';
 
-// EmailJS Configuration
-// Note: You'll need to set up EmailJS account and get these values
-const EMAILJS_CONFIG = {
-  serviceId: import.meta.env.VITE_EMAILJS_SERVICE_ID || 'your_service_id',
-  templateId: import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'your_template_id',
-  publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'your_public_key'
+/**
+ * Production Email Service for PayPing
+ * Supports both SendGrid (production) and EmailJS (development/fallback)
+ */
+
+// Email service configuration
+const EMAIL_CONFIG = {
+  sendgrid: {
+    apiKey: import.meta.env.VITE_SENDGRID_API_KEY,
+    fromEmail: import.meta.env.VITE_FROM_EMAIL || 'noreply@payping.com',
+    fromName: import.meta.env.VITE_FROM_NAME || 'PayPing'
+  },
+  emailjs: {
+    serviceId: import.meta.env.VITE_EMAILJS_SERVICE_ID || 'your_service_id',
+    templateId: import.meta.env.VITE_EMAILJS_TEMPLATE_ID || 'your_template_id',
+    publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY || 'your_public_key'
+  },
+  templates: {
+    paymentReminder: import.meta.env.VITE_SENDGRID_PAYMENT_REMINDER_TEMPLATE || 'template_payment_reminder',
+    paymentReceived: import.meta.env.VITE_SENDGRID_PAYMENT_RECEIVED_TEMPLATE || 'template_payment_received',
+    accountWelcome: import.meta.env.VITE_SENDGRID_WELCOME_TEMPLATE || 'template_welcome',
+    passwordReset: import.meta.env.VITE_SENDGRID_PASSWORD_RESET_TEMPLATE || 'template_password_reset'
+  }
+};
+
+// Email delivery status constants
+export const EMAIL_STATUS = {
+  PENDING: 'pending',
+  SENT: 'sent',
+  DELIVERED: 'delivered',
+  OPENED: 'opened',
+  CLICKED: 'clicked',
+  BOUNCED: 'bounced',
+  FAILED: 'failed',
+  UNSUBSCRIBED: 'unsubscribed'
 };
 
 class EmailService {
   constructor() {
-    // Initialize EmailJS with public key
-    if (EMAILJS_CONFIG.publicKey !== 'your_public_key') {
-      emailjs.init(EMAILJS_CONFIG.publicKey);
+    this.isProduction = import.meta.env.PROD;
+    this.useSendGrid = !!EMAIL_CONFIG.sendgrid.apiKey;
+    
+    // Initialize EmailJS as fallback
+    if (EMAIL_CONFIG.emailjs.publicKey !== 'your_public_key') {
+      emailjs.init(EMAIL_CONFIG.emailjs.publicKey);
     }
   }
 
-  // Check if EmailJS is properly configured
+  // Check if email service is properly configured
   isConfigured() {
     return (
       EMAILJS_CONFIG.serviceId !== 'your_service_id' &&
